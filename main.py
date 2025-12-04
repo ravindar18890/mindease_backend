@@ -1,29 +1,37 @@
 import os
 import requests
 import gradio as gr
-from dotenv import load_dotenv
 import firebase_admin
 from firebase_admin import credentials, firestore
 from datetime import datetime
 
-# Load environment variables
-load_dotenv()
+# ------------------ FIREBASE ADMIN FROM RENDER SECRET FILE ------------------ #
+
+# Render mounts secret files here:
+SERVICE_ACCOUNT_PATH = "/etc/secrets/serviceAccountKey.json"
+
+if not firebase_admin._apps:
+    try:
+        cred = credentials.Certificate(SERVICE_ACCOUNT_PATH)
+        firebase_admin.initialize_app(cred)
+        print("Firebase initialized using Render Secret File!")
+    except Exception as e:
+        print("Firebase initialization failed:", e)
+
+db = firestore.client()
+
+# ------------------ API KEYS DIRECTLY IN CODE (you can move to Render env vars later) ------------------ #
 
 FIREBASE_API_KEY = "AIzaSyAbVHBfj4oN7Kz1V29aclX052iFhRgz8w8"
-MISTRAL_API_KEY = 'STE2mj5jQnioh7jTxFlwQKLNDBkcOIbZ'
+MISTRAL_API_KEY = "STE2mj5jQnioh7jTxFlwQKLNDBkcOIbZ"
 
 FB_SIGNUP = f"https://identitytoolkit.googleapis.com/v1/accounts:signUp?key={FIREBASE_API_KEY}"
 FB_SIGNIN = f"https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key={FIREBASE_API_KEY}"
 
-# Firebase Admin Setup
-cred = credentials.Certificate("serviceAccountKey.json")
-firebase_admin.initialize_app(cred)
-db = firestore.client()
-
-
 # ------------------ SIGNUP ------------------ #
 def signup(email, password):
     data = {"email": email, "password": password, "returnSecureToken": True}
+
     try:
         res = requests.post(FB_SIGNUP, json=data)
         res.raise_for_status()
@@ -38,12 +46,13 @@ def signup(email, password):
         return "🎉 Signup successful! Please login."
 
     except Exception:
-        return f"❌ Signup Error: {res.json()['error']['message']}"
+        return "❌ Signup Error: Could not create account."
 
 
 # ------------------ LOGIN ------------------ #
 def login(email, password, session):
     data = {"email": email, "password": password, "returnSecureToken": True}
+
     try:
         res = requests.post(FB_SIGNIN, json=data)
         res.raise_for_status()
@@ -91,6 +100,7 @@ def load_history(session):
 
 # ------------------ MISTRAL AI CHAT ------------------ #
 def mistral_chat(message, history, session):
+
     if not session.get("logged_in"):
         return history, [["System", "❌ Please login to chat."]]
 
@@ -103,11 +113,12 @@ def mistral_chat(message, history, session):
                 "messages": [{"role": "user", "content": message}]
             },
         )
+
         response.raise_for_status()
 
         reply = response.json()["choices"][0]["message"]["content"]
 
-        history.append(("You: " + message, reply))
+        history.append((f"You: {message}", reply))
 
         save_message(session["uid"], "user", message)
         save_message(session["uid"], "bot", reply)
@@ -127,40 +138,20 @@ def logout(session):
     return "👋 Logged out successfully.", session, [], ""
 
 
-# ------------------ CUSTOM MODERN UI CSS ------------------ #
+# ------------------ CUSTOM UI CSS ------------------ #
 CUSTOM_CSS = """
 <style>
 body { background: #0F172A; font-family: 'Inter', sans-serif;}
 .gradio-container { max-width: 900px !important; margin: auto; }
-
-.card {
-    background: rgba(255,255,255,0.07);
-    padding: 25px;
-    border-radius: 16px;
-    backdrop-filter: blur(12px);
-    box-shadow: 0 10px 25px rgba(0,0,0,0.4);
-}
-
+.card { background: rgba(255,255,255,0.07); padding: 25px; border-radius: 16px; backdrop-filter: blur(12px); box-shadow: 0 10px 25px rgba(0,0,0,0.4); }
 h1, h2, h3, h4 { color: #38bdf8 !important; }
-
 label { color: #e2e8f0 !important; }
-
-textarea, input {
-    background: rgba(255,255,255,0.15) !important;
-    color: white !important;
-    border-radius: 10px !important;
-}
-
-button {
-    border-radius: 10px !important;
-    font-weight: bold !important;
-}
-
+textarea, input { background: rgba(255,255,255,0.15) !important; color: white !important; border-radius: 10px !important; }
+button { border-radius: 10px !important; font-weight: bold !important; }
 </style>
 """
 
-
-# ------------------ APP UI ------------------ #
+# ------------------ GRADIO UI ------------------ #
 with gr.Blocks(css=CUSTOM_CSS, theme=gr.themes.Soft()) as app:
 
     session = gr.State({"logged_in": False, "uid": None, "email": None})
@@ -168,6 +159,7 @@ with gr.Blocks(css=CUSTOM_CSS, theme=gr.themes.Soft()) as app:
 
     gr.Markdown("## MINDEASE CHAT BOT")
 
+    # --- Signup ---
     with gr.Tab("Signup"):
         with gr.Box(elem_classes="card"):
             s_email = gr.Textbox(label="Email")
@@ -176,6 +168,7 @@ with gr.Blocks(css=CUSTOM_CSS, theme=gr.themes.Soft()) as app:
             s_msg = gr.Markdown()
             s_btn.click(signup, inputs=[s_email, s_pass], outputs=s_msg)
 
+    # --- Login ---
     with gr.Tab("Login"):
         with gr.Box(elem_classes="card"):
             l_email = gr.Textbox(label="Email")
@@ -184,6 +177,7 @@ with gr.Blocks(css=CUSTOM_CSS, theme=gr.themes.Soft()) as app:
             l_msg = gr.Markdown()
             l_btn.click(login, inputs=[l_email, l_pass, session], outputs=[l_msg, session])
 
+    # --- Chat ---
     with gr.Tab("Chat"):
         with gr.Box(elem_classes="card"):
             chatbot = gr.Chatbot()
@@ -200,6 +194,7 @@ with gr.Blocks(css=CUSTOM_CSS, theme=gr.themes.Soft()) as app:
                              inputs=[session],
                              outputs=[logout_msg, session, chatbot, chat_history])
 
+    # --- History Viewer ---
     with gr.Tab("Chat History Viewer"):
         with gr.Box(elem_classes="card"):
             history_btn = gr.Button("🔄 Load Chat History")
@@ -211,5 +206,6 @@ with gr.Blocks(css=CUSTOM_CSS, theme=gr.themes.Soft()) as app:
 
 
 app.launch()
+
 
 
