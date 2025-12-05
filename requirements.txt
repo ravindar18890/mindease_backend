@@ -1,8 +1,11 @@
 gradio==3.41.2
 firebase-admin
+google-cloud-firestore
 python-dotenv
 requests
-google-cloud-firestore
+pydub
+ffmpeg-python
 gunicorn
 uvicorn
 fastapi
+
