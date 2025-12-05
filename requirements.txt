@@ -3,9 +3,7 @@ firebase-admin
 google-cloud-firestore
 python-dotenv
 requests
-pydub
-ffmpeg-python
+pyaudio
 gunicorn
 uvicorn
 fastapi
-
